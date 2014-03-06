@@ -1,52 +1,85 @@
 #!/bin/sh
 
-if [ $# -ne 0 -a $# -gt 2 ]; then
-	echo "Parameter error. ($#/2)"
-	echo "Need string to search."
-	echo "  Case1 : openf.sh $filename"
-	echo "  Case2 : openf.sh $filename $greppath"
-	exit 1
+# exit if uname is not a 'Darwin'
+if [ "`uname`" != 'Darwin' ]
+then
+  echo 'openf.sh can execute on OS X' >&2
+  exit 2
 fi
 
-OPEN_FILE_PATH=""
-SEARCH_STRING=$1
-PATH_STRING=""
-QUERY=""
-QUERY_FIND=""
-QUERY_GREP=""
-NUM=0
+# print help
+help() {
+  # CAUTION: do not delete tabs
+  cat <<-HELP >&2
+	Usage: openf [-ir] pattern [filter]
+	HELP
+  exit 1
+}
 
+# parse option
+#   i: ignorecase
+#   r: regexp
+#   h: print help and exit
+IGNORE=0
+REGEXP=0
+while getopts irh OPT
+do
+  case $OPT in
+    i) IGNORE=1 ;;
+    r) REGEXP=1 ;;
+    h) help     ;;
+  esac
+done
+shift `expr $OPTIND - 1`
 
-# option 1 file string
-if [ $# -gt 0 ]; then
-	QUERY_FIND="find ./* -name ${SEARCH_STRING}"
-	QUERY=${QUERY_FIND} 
+# set arguments
+PATTERN=$1
+FILTER=$2
+
+# halt if use unknown variable
+set -u
+
+# exit if pattern is empty
+[ "$PATTERN" = '' ] && help
+
+# default find rule
+FINDRULE=name
+
+# change to use regex
+if [ "$REGEXP" -eq 1 ]
+then
+  FINDRULE=regex
 fi
 
-
-# option 2 grep string
-if [ $# -gt 1 ]; then
-	PATH_STRING=$2
-	QUERY_FIND="find ./* -name ${SEARCH_STRING}"
-	QUERY_GREP=" | grep ${PATH_STRING}"
-	QUERY=${QUERY_FIND}${QUERY_GREP}
+# to ignorecase
+if [ "$IGNORE" -eq 1 ]
+then
+  FINDRULE=i$FINDRULE
 fi
 
-
-NUM=`eval ${QUERY} | wc -l`
-
-if [ ${NUM} -eq 0 ]; then
-	echo "File is not found."
-	exit;
+# find
+if [ "$FILTER" = '' ]
+then
+  RESULT=`find . -$FINDRULE "$PATTERN" -type f -or -type l`
+else
+  RESULT=`find . -$FINDRULE "$PATTERN" -type f -or -type l | grep -E "$FILTER"`
 fi
 
-if [ ${NUM} -gt 1 ]; then
-	echo "Targetted file too many."
-	eval ${QUERY}
-	exit;
+# get file count
+COUNT=`echo "$RESULT" | wc -l`
+
+# exit if not match to any files
+# $COUNT is always over 1
+if [ "$RESULT" = '' ]
+then
+  echo 'file not found' >&2
+  exit 3
+elif [ "$COUNT" -gt 1 ]
+then
+  echo "match to many files:"
+  echo "$RESULT"
+  exit 4
 fi
 
-OPEN_FILE_PATH=`eval ${QUERY}`
-echo "File open -> ${OPEN_FILE_PATH}"
-
-open ${OPEN_FILE_PATH}
+echo "open to $RESULT"
+open "$RESULT"
